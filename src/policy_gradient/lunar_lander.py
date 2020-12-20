@@ -6,55 +6,59 @@ import time
 import pickle
 
 
-gym.envs.register(
-         id='Cappedlunar-v0',
-         entry_point='gym.envs.box2d:LunarLander',
-         max_episode_steps=400,
-    )
 
-run_env = gym.make('Cappedlunar-v0')
-run_env = gym.wrappers.Monitor(run_env, "recordings", video_callable=lambda episode_id: False, force=True)
+batch_size = 12
+plot_frequency = 100
+learning_rate = 0.001
+gamma = 0.999
 
-initial_time = time.time()
 
-#policy_est = pickle.load( open( "policy.p", "rb" ) )
-policy_est = pg.policy_estimator_network(envs[0])
-    
-rewards_over_time = []
-time_per_comp = []
 
-for i in range(1000):
 
-	rewards = policy_est.reinforce(run_env, num_episodes = 100)
-	rewards_over_time.append(sum(rewards)/100)
+if __name__ == "__main__":
+	gym.envs.register(
+	         id='Cappedlunar-v0',
+	         entry_point='gym.envs.box2d:LunarLander',
+	         max_episode_steps=800,
+	    )
 
-	time_per_comp.append((time.time()-initial_time)/60)
+	run_env = gym.make('Cappedlunar-v0')
+	run_env = gym.wrappers.Monitor(run_env, "recordings", video_callable=lambda episode_id: True, force=True)
 
-	plt.subplot(2,1,1)
-	plt.plot(rewards_over_time)
-	plt.ylabel("Reward")
-	plt.subplot(2,1,2)
-	plt.plot(time_per_comp)
-	plt.xlabel("Episodes (x100)")
-	plt.ylabel("Time (minutes, cumulative)")
-	plt.pause(0.0001)
+	envs = []
+	for i in range(batch_size):
+	        envs.append(gym.make('Cappedlunar-v0'))
 
-	#pickle.dump( policy_est, open( "policy.p", "wb" ) )
+	initial_time = time.time()
 
-	if i%10 == 0:
-		s_0 = run_env.reset()
-		action_space = np.arange(run_env.action_space.n)
-		done = False
+	#policy_est = pickle.load( open( "policy.p", "rb" ) )
+	policy_est = pg.policy_estimator_network(envs)
+	    
+	rewards_over_time = []
+	time_per_comp = []
 
-		for _ in range(400):
-		    run_env.render()
-		    if not done:
-		        action_probs = policy_est.predict(s_0).detach().numpy()
-		        action = np.random.choice(action_space, p=action_probs)
-		        s_1, r, done, _ = run_env.step(action)
-		        #print("\r", r)
-		        s_0 = s_1
-		    else: break
-plt.show()   
+	for i in range(1000):
 
-env.close()
+		rewards = policy_est.reinforce(num_episodes = plot_frequency, gamma=0.999, learning_rate = learning_rate)
+		rewards_over_time.append(sum(rewards)/plot_frequency)
+
+		time_per_comp.append((time.time()-initial_time)/60)
+
+		title = "Batch Size: " + str(batch_size) + ", Learning Rate: " + str(learning_rate) + ", Gamma: " + str(gamma)
+		
+		plt.subplot(2,1,1)
+		plt.title(title)
+		plt.plot(rewards_over_time)
+		plt.ylabel("Reward")
+		plt.subplot(2,1,2)
+		plt.plot(time_per_comp)
+		plt.xlabel("Episodes (x100)")
+		plt.ylabel("Time (minutes, cumulative)")
+		plt.pause(0.0001)
+
+		#pickle.dump( policy_est, open( "policy.p", "wb" ) )
+
+		if i%10 == 0:
+			policy_est.run_episode(run_env, render = True)
+	plt.show()   
+

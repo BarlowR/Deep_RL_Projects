@@ -6,9 +6,9 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import pickle
-
+import multiprocessing as mp
 import gym
+import time
 
 
 
@@ -21,6 +21,8 @@ class policy_estimator_network():
         if type(envs) is list:
             self.environment = envs[0]
             self.environments = envs
+            
+            #self.mp_queue = mp.Queue()
         else:
             self.environment = envs
             self.environments = None
@@ -32,7 +34,9 @@ class policy_estimator_network():
         
         # This is just a standin network; specify your own when you initialize the class.
         self.network = nn.Sequential(
-            nn.Linear(self.n_inputs, 16), 
+            nn.Linear(self.n_inputs, 32), 
+            nn.ReLU(), 
+            nn.Linear(32, 16), 
             nn.ReLU(), 
             nn.Linear(16, self.n_outputs),
             nn.Softmax(dim=-1))
@@ -51,7 +55,7 @@ class policy_estimator_network():
         r = r[::-1].cumsum()[::-1]
         return r
 
-    def run_episode(self, env):
+    def run_episode(self, env, queue = False, render = False):
         #print(id(self.network))
         s_0 = env.reset()
         states = []
@@ -59,12 +63,11 @@ class policy_estimator_network():
         actions = []
         done = False
         while done == False:
+            if render: env.render()
             # Get actions and sample an action
             action_probs = self.predict(torch.FloatTensor(s_0)).detach().numpy()
             action = np.random.choice(self.action_space, p=action_probs)
             
-            #print("\r \n ",len(states), "        step",  end="\033[F")
-
             # take a step in the environment
             s_1, r, done, _ = env.step(action)
 
@@ -75,19 +78,22 @@ class policy_estimator_network():
             actions.append(action)
             s_0 = s_1
 
+        if (queue):
+            self.mp_queue.put((states, actions, rewards))
         return((states, actions, rewards))
 
 
     def reinforce(self, env = None, num_episodes=2000,
-                  batch_size=5, gamma=0.99, learning_rate = 0.001,
-                  batching_function = None):
+                  batch_size=5, gamma=0.99, learning_rate = 0.001):
 
         if env is None:
             env = self.environment
+
         # Set up lists to hold results
         total_rewards = []
         batch_rewards = []
         batch_actions = []
+        batch_render = []
         batch_states = []
         batch_counter = 1
         
@@ -101,23 +107,42 @@ class policy_estimator_network():
             
 
             #run batch_number of episodes with the current network, and add all results into a batch list
-            if batching_function is None:
+            if self.environments is None:
                 batches = []
                 for _ in range(batch_size):
                     batches.append(self.run_episode(env))
-            else: batches = batching_function(batch_size)
+            else:
+                batch_size = len(self.environments)
+                start = time.time()
+                batches = self.batch_multiprocess()
+                '''ulti_end = time.time()
+                
+                batches = []
+                for _ in range(batch_size):
+                    batches.append(self.run_episode(env))
+                sequential_end = time.time()
+                
+
+                print("sequential:", sequential_end-multi_end, "batch:", multi_end-start)
+                '''
 
             #split the batches out into batch_rewards, batch_states and batch_actions
             for (states, actions, rewards) in batches:
+
                 
-                batch_rewards.extend(self.discount_rewards(rewards, gamma))
+
+                #discount rewards
+                rewards = self.discount_rewards(rewards, gamma)
+
+                #print(rewards[1], rewards[-1])
+                batch_rewards.extend(rewards)
 
                 batch_states.extend(states)
                 
                 batch_actions.extend(actions)
-                               
+
                 total_rewards.append(sum(rewards))
-            
+            #print("\n")                  
                 
             #set gradients to 0
             optimizer.zero_grad()
@@ -125,11 +150,16 @@ class policy_estimator_network():
 
             #create tensors of our batches
             state_tensor = torch.FloatTensor(batch_states)
+            #print(len(state_tensor))
 
             reward_tensor = torch.FloatTensor(batch_rewards)
             
             action_tensor = torch.LongTensor(batch_actions) #this needs to be a LongTensor since we'll be using it to select action probabilities
             
+
+            #scale our reward vector by substracting the mean from each element and scaling to unit variance by dividing by the standard deviation and machine epsilon.)
+            reward_tensor = (reward_tensor - reward_tensor.mean()) / (reward_tensor.std() + np.finfo(np.float32).eps)
+
 
             # Calculate the log probability of all possible actions at all states
             logprob = torch.log(self.predict(state_tensor))
@@ -164,32 +194,37 @@ class policy_estimator_network():
         return total_rewards
 
 
-    def batch_multiprocess(self, batch_size):
-        #this should only be called if you've passed in multiple environment instances as a list to the initialization function
+    def batch_multiprocess(self):
+        #this will be called if you've passed in multiple environment instances as a list to the initialization function
         if self.environments is not None:
+
             batches = []
-            for index in range(batch_size):
-                env = self.environments[index % len(self.environments)]
-                batches.append(self.run_episode(env))
+
+            with mp.get_context("spawn").Pool(processes=4) as p:
+                batches = p.map(self.run_episode, self.environments)
+            #batches = [self.run_episode(self.environments[i]) for i in range (4)]
             return batches
         else:
             raise Exception("policy network not initialized as multi-environment")
 
 
 
+'''
 if __name__ == "__main__":
+
 
     gym.envs.register(
              id='Cappedlunar-v0',
              entry_point='gym.envs.box2d:LunarLander',
-             max_episode_steps=400,
+             max_episode_steps=800,
         )
 
     run_env = gym.make('Cappedlunar-v0')
 
-    envs = [gym.make('Cappedlunar-v0')] * 10
+    envs = []
+    for i in range(4):
+        envs.append(gym.make('Cappedlunar-v0'))
 
-    policy_estimator = policy_estimator_network(run_env)
-
-    policy_estimator.reinforce(gamma = 0.999, learning_rate = 0.01, 
-                            batching_function = policy_estimator.batch_multiprocess)
+    policy_estimator = policy_estimator_network(envs)
+    
+    policy_estimator.reinforce(num_episodes = 30000, gamma = 0.999, batch_size = 5, learning_rate = 0.01)'''
