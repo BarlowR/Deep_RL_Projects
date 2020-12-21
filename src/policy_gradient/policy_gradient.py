@@ -22,10 +22,19 @@ class policy_estimator_network():
     def __init__(self, envs):
 
         if type(envs) is list:
+            #set our run environment to be the first environment
             self.environment = envs[0]
+            #set our list of environments to be the provided list of environments
             self.environments = envs
-            
-            #self.mp_queue = mp.Queue()
+
+            #start our in/out queues for the workers
+            self.env_network_queue = mp.Queue()
+            self.batch_queue = mp.Queue()
+
+            #start as many workers as cpus
+            for i in range(mp.cpu_count()):
+                RunEpisodeWorker(self.env_network_queue, self.batch_queue).start()
+
         else:
             self.environment = envs
             self.environments = None
@@ -192,22 +201,21 @@ class policy_estimator_network():
             batch_actions = []
             batch_states = []
                     
-        return total_rewards
+        return total_rewards   
 
 
     def batch_multiprocess(self):
-        #this will be called if you've passed in multiple environment instances as a list to the initialization function
-        if self.environments is not None:
+        for env in self.environments:
+            self.env_network_queue.put((env, self.network))
 
-            batches = []
+        batch = []
+        for _ in self.environments:
+            batch.append(self.batch_queue.get())
+
+        return batch
 
 
-            with mp.get_context("spawn").Pool(processes=mp.cpu_count()) as p:
-                batches = p.map(self.run_episode, self.environments)
-            #batches = [self.run_episode(self.environments[i]) for i in range (4)]
-            return batches
-        else:
-            raise Exception("policy network not initialized as multi-environment")
+
 
 
 
@@ -248,8 +256,7 @@ class image_policy_estimator_network(policy_estimator_network):
                 nn.Softmax(dim = -1)
                 )
 
-    def save_layer(conv, ):
-        self.frame+=1
+        self.run_env_queue = mp.Queue()
 
 
     def predict(self, state):
@@ -262,6 +269,53 @@ class image_policy_estimator_network(policy_estimator_network):
             action_probs = self.network(state)
 
         return action_probs
+
+
+
+
+
+class RunEpisodeWorker(mp.Process):
+    def __init__(self, in_queue, out_queue):
+        super(RunEpisodeWorker, self).__init__()
+        self.env_network_queue = in_queue
+        self.batch_queue = out_queue
+
+
+    def run(self):
+        print('RunEpisodeWorker started')
+        # do some initialization here
+
+
+        for (env, network) in iter(self.env_network_queue.get, None):
+            #print(id(self.network))
+
+
+            action_space = np.arange(env.action_space.n)
+
+            s_0 = env.reset()
+            states = []
+            rewards = []
+            actions = []
+            done = False
+            while done == False:
+                #env.render()
+                
+                # Get actions and sample an action
+                action_probs = network(torch.FloatTensor(s_0).unsqueeze(dim=0)).squeeze(dim=0).detach().numpy()
+                action = np.random.choice(action_space, p=action_probs)
+                
+                # take a step in the environment
+                s_1, r, done, _ = env.step(action)
+
+                #print("\r \n ", len(states), "        post step", end="\033[F")
+                #append items to our lists
+                states.append(s_0)
+                rewards.append(r)
+                actions.append(action)
+                s_0 = s_1
+
+            if env.viewer: env.viewer.close()
+            self.batch_queue.put((states, actions, rewards))
 
 
 

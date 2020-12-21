@@ -7,7 +7,7 @@ import pickle
 
 
 
-batch_size = 12
+batch_size = 4
 plot_frequency = 100
 learning_rate = 0.001
 gamma = 0.999
@@ -19,7 +19,7 @@ if __name__ == "__main__":
 	gym.envs.register(
 	         id='Cappedlunar-v0',
 	         entry_point='gym.envs.box2d:LunarLander',
-	         max_episode_steps=800,
+	         max_episode_steps=400,
 	    )
 
 	run_env = gym.make('Cappedlunar-v0')

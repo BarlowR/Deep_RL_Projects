@@ -11,7 +11,7 @@ import torch.nn as nn
 
 
 headless = True
-learning_rate = 0.00001
+learning_rate = 0.0001
 batch_size = 10
 
 
@@ -28,13 +28,13 @@ if __name__ == "__main__":
     run_env = pg.ImagePreProcessingWrapper(run_env, 4)
 
 
-    '''envs = []
-    for _ in range(12):
+    envs = []
+    for _ in range(10):
         env = gym.make('Breakout-v0')
-        envs.append(AtariPreProcessingWrapper(env, 4))'''
+        envs.append(pg.ImagePreProcessingWrapper(env, 4))
 
 
-    policy_gradient_agent = pg.image_policy_estimator_network(run_env)
+    policy_gradient_agent = pg.image_policy_estimator_network(envs)
 
     
     rewards_over_time = []
