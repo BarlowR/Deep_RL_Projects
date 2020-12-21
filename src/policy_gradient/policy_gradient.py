@@ -9,6 +9,9 @@ import torch.optim as optim
 import multiprocessing as mp
 import gym
 import time
+from collections import deque
+from PIL import Image
+
 
 
 
@@ -129,8 +132,6 @@ class policy_estimator_network():
             #split the batches out into batch_rewards, batch_states and batch_actions
             for (states, actions, rewards) in batches:
 
-                
-
                 #discount rewards
                 rewards = self.discount_rewards(rewards, gamma)
 
@@ -214,6 +215,7 @@ class image_policy_estimator_network(policy_estimator_network):
 
     def __init__(self, envs):
         super(image_policy_estimator_network, self).__init__(envs)
+        self.frame = 0
 
         self.network = nn.Sequential(
                 
@@ -225,6 +227,8 @@ class image_policy_estimator_network(policy_estimator_network):
                 padding=2),
 
                 nn.ReLU(),
+
+                #SaveNNImage(),
 
                 nn.Conv2d(
                 in_channels=16,
@@ -244,6 +248,10 @@ class image_policy_estimator_network(policy_estimator_network):
                 nn.Softmax(dim = -1)
                 )
 
+    def save_layer(conv, ):
+        self.frame+=1
+
+
     def predict(self, state):
         #state needs to be a FloatTensor. returns a FloatTensor
         if state.dim() == 3:
@@ -255,6 +263,67 @@ class image_policy_estimator_network(policy_estimator_network):
 
         return action_probs
 
+
+
+
+
+class ImagePreProcessingWrapper(gym.Wrapper):
+    #initialize the wrapper
+    def __init__(self, env, queue_length=4):
+        super().__init__(env)
+        self.env = env
+        self.stack = deque()
+        self.queue_length = queue_length
+
+    #process the frames from 210 × 160 pixel images with a 128 color palette down to 84x84 downscaled cropped greyscale image
+    def process (self,image_state):
+        grey = np.dot(image_state[...,:3], [0.299, 0.587, 0.114])
+        grey_downsampled = grey[::2,::2]
+        grey_cropped = grey_downsampled[18:98]
+        return grey_cropped
+
+    def reset(self):
+        #reset the environment and add the state as the first in our queue
+        
+        self.stack.clear()
+        self.stack.append(self.process(self.env.reset()))
+
+        #take populate our state queue by taking steps with an arbitrary action 
+        for _ in range(self.queue_length-1):
+            next_state, reward, done, info, = self.env.step(1)
+            self.stack.append(self.process(next_state))
+
+        return np.array(self.stack)
+
+    def step(self, action):
+        next_state, reward, done, info = self.env.step(1)
+        if not done:
+            next_state, reward2, done, info2 = self.env.step(action)
+
+            reward =+reward2
+
+        self.stack.append(self.process(next_state))
+        self.stack.popleft()
+        return (np.array(self.stack), reward, done, info)
+
+
+
+class SaveNNImage(nn.Module):
+    def __init__(self):
+        super(SaveNNImage, self).__init__()
+        self.frame = 0
+        self.fp_out = "./images/conv_layer_frame"
+    
+    def forward(self, x):
+        # Do your print / debug stuff here
+        self.frame += 1
+        file_path = self.fp_out + str(self.frame) + ".gif"
+        im = Image.fromarray(x.detach().numpy()[0][0]*255, mode="L")
+        im = im.resize((240,240), resample = Image.NEAREST)
+        im.save(file_path)
+
+        print(self.frame)
+        return x
 
 '''
 if __name__ == "__main__":
