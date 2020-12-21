@@ -209,6 +209,52 @@ class policy_estimator_network():
 
 
 
+class image_policy_estimator_network(policy_estimator_network):
+
+    def __init__(self, envs):
+        super(image_policy_estimator_network, self).__init__(envs)
+
+        self.network = nn.Sequential(
+                
+                nn.Conv2d(
+                in_channels=4,
+                out_channels=16,
+                kernel_size=8,
+                stride=4,
+                padding=2),
+
+                nn.ReLU(),
+
+                nn.Conv2d(
+                in_channels=16,
+                out_channels=32,
+                kernel_size=4,
+                stride=2,
+                padding=1),
+
+                nn.ReLU(),
+
+                nn.Flatten(),
+
+                nn.Linear(
+                in_features=3200,
+                out_features=self.n_outputs),
+
+                nn.Softmax(dim = -1)
+                )
+
+    def predict(self, state):
+        #state needs to be a FloatTensor. returns a FloatTensor
+        if state.dim() == 3:
+            state = state.unsqueeze(dim=0)
+            action_probs = self.network(state)
+            action_probs = action_probs.squeeze(dim=0)
+        else:
+            action_probs = self.network(state)
+
+        return action_probs
+
+
 '''
 if __name__ == "__main__":
 

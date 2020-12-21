@@ -6,12 +6,13 @@ from collections import deque
 import scipy
 import time
 import pickle
+import torch.nn as nn
 
 
 
 class AtariPreProcessingWrapper(gym.Wrapper):
     #initialize the wrapper
-    def __init__(self, env, queue_length):
+    def __init__(self, env, queue_length=4):
         super().__init__(env)
         self.env = env
         self.stack = deque()
@@ -45,52 +46,47 @@ class AtariPreProcessingWrapper(gym.Wrapper):
         return (np.array(self.stack), reward, done, info)
 
 
+if __name__ == "__main__":
 
-initial_time = time.time()
-
-
-run_env = gym.make('Breakout-v0')
-run_env = gym.wrappers.Monitor(run_env, "recordings", video_callable=lambda episode_id: (episode_id%50 == 0), force=True)
-run_env = AtariPreProcessingWrapper(run_env, 4)
-
-policy_gradient_agent = pg.policy_estimator_network_atari(run_env)
-
-plt.show()  
-rewards_over_time = []
-time_per_comp = []
-
-for i in range(1000):
+    initial_time = time.time()
 
 
-    s_0 = run_env.reset()
-    action_space = np.arange(run_env.action_space.n)
-    done = False
+    run_env = gym.make('Breakout-v0')
+    run_env = gym.wrappers.Monitor(run_env, "recordings", video_callable=lambda episode_id: (episode_id%50 == 0), force=True)
+    run_env = AtariPreProcessingWrapper(run_env, 4)
 
-    while not done:
-        run_env.render()
-        action_probs = policy_gradient_agent.predict(s_0).detach().numpy()
-        action = np.random.choice(action_space, p=action_probs)
-        s_1, r, done, _ = run_env.step(action)
-        time.sleep(0.01)
-        #print("\r", r)
-        s_0 = s_1
-    
+    envs = []
+    for _ in range(4):
+        env = gym.make('Breakout-v0')
+        envs.append(AtariPreProcessingWrapper(env, 4))
 
-    time_per_comp.append((time.time()-initial_time)/60)
+    policy_gradient_agent = pg.image_policy_estimator_network(envs)
 
-    plt.subplot(2,1,1)
-    plt.plot(rewards_over_time)
-    plt.ylabel("Reward")
-    plt.subplot(2,1,2)
-    plt.plot(time_per_comp)
-    plt.xlabel("Episodes (x100)")
-    plt.ylabel("Time (minutes, cumulative)")
-    plt.pause(0.0001)
+    plt.show()  
+    rewards_over_time = []
+    time_per_comp = []
 
-    rewards = policy_gradient_agent.reinforce(run_env, num_episodes = 100)
-    rewards_over_time.append(sum(rewards)/100)
+    for i in range(1000):
 
-    pickle.dump(policy_gradient_agent.network, open( "policy.p", "wb" ) )
 
-    
-plt.show()   
+        if i%10 == 0: policy_gradient_agent.run_episode(run_env, render = True)
+        
+
+        time_per_comp.append((time.time()-initial_time)/60)
+
+        plt.subplot(2,1,1)
+        plt.plot(rewards_over_time)
+        plt.ylabel("Reward")
+        plt.subplot(2,1,2)
+        plt.plot(time_per_comp)
+        plt.xlabel("Episodes (x100)")
+        plt.ylabel("Time (minutes, cumulative)")
+        plt.pause(0.0001)
+
+        rewards = policy_gradient_agent.reinforce(run_env, num_episodes = 100)
+        rewards_over_time.append(sum(rewards)/100)
+
+        pickle.dump(policy_gradient_agent.network, open( "atari_policy.p", "wb" ) )
+
+        
+    plt.show()   
