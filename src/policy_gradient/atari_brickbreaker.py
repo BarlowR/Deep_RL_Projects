@@ -91,6 +91,6 @@ if __name__ == "__main__":
         rewards = policy_gradient_agent.reinforce(run_env, num_episodes = 100)
         rewards_over_time.append(sum(rewards)/100)
 
-        pickle.dump((policy_gradient_agent.network, rewards_over_time, time_per_comp) open( "atari_policy.p", "wb" ) )
+        pickle.dump((policy_gradient_agent.network, rewards_over_time, time_per_comp), open( "atari_policy.p", "wb" ) )
 
         
