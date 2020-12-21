@@ -48,6 +48,10 @@ class AtariPreProcessingWrapper(gym.Wrapper):
 
 if __name__ == "__main__":
 
+    headless = True
+
+
+
     initial_time = time.time()
 
 
@@ -56,37 +60,37 @@ if __name__ == "__main__":
     run_env = AtariPreProcessingWrapper(run_env, 4)
 
     envs = []
-    for _ in range(4):
+    for _ in range(12):
         env = gym.make('Breakout-v0')
         envs.append(AtariPreProcessingWrapper(env, 4))
 
     policy_gradient_agent = pg.image_policy_estimator_network(envs)
 
-    plt.show()  
+     
     rewards_over_time = []
     time_per_comp = []
 
     for i in range(1000):
 
 
-        if i%10 == 0: policy_gradient_agent.run_episode(run_env, render = True)
+        if i%10 == 0 and not headless: policy_gradient_agent.run_episode(run_env, render = True)
         
 
         time_per_comp.append((time.time()-initial_time)/60)
 
-        plt.subplot(2,1,1)
-        plt.plot(rewards_over_time)
-        plt.ylabel("Reward")
-        plt.subplot(2,1,2)
-        plt.plot(time_per_comp)
-        plt.xlabel("Episodes (x100)")
-        plt.ylabel("Time (minutes, cumulative)")
-        plt.pause(0.0001)
+        if not headless:
+            plt.subplot(2,1,1)
+            plt.plot(rewards_over_time)
+            plt.ylabel("Reward")
+            plt.subplot(2,1,2)
+            plt.plot(time_per_comp)
+            plt.xlabel("Episodes (x100)")
+            plt.ylabel("Time (minutes, cumulative)")
+            plt.pause(0.0001)
 
         rewards = policy_gradient_agent.reinforce(run_env, num_episodes = 100)
         rewards_over_time.append(sum(rewards)/100)
 
-        pickle.dump(policy_gradient_agent.network, open( "atari_policy.p", "wb" ) )
+        pickle.dump((policy_gradient_agent.network, rewards_over_time, time_per_comp) open( "atari_policy.p", "wb" ) )
 
         
-    plt.show()   
