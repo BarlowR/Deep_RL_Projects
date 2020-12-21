@@ -127,7 +127,7 @@ class policy_estimator_network():
                 batch_size = len(self.environments)
                 start = time.time()
                 batches = self.batch_multiprocess()
-                '''ulti_end = time.time()
+                multi_end = time.time()
                 
                 batches = []
                 for _ in range(batch_size):
@@ -136,7 +136,7 @@ class policy_estimator_network():
                 
 
                 print("sequential:", sequential_end-multi_end, "batch:", multi_end-start)
-                '''
+                
 
             #split the batches out into batch_rewards, batch_states and batch_actions
             for (states, actions, rewards) in batches:
