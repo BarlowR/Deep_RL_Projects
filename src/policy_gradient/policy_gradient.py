@@ -201,7 +201,7 @@ class policy_estimator_network():
             batches = []
 
 
-            with mp.get_context("spawn").Pool(processes=multiprocessing.cpu_count()) as p:
+            with mp.get_context("spawn").Pool(processes=mp.cpu_count()) as p:
                 batches = p.map(self.run_episode, self.environments)
             #batches = [self.run_episode(self.environments[i]) for i in range (4)]
             return batches
